@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+chromadb
+python-dotenv
+pdfplumber
+pypdf
+pymupdf
+langchain
+langchain-community
+langchain-chroma
+langchain-core
+langchain-text-splitters
+pydantic-settings
+python-multipart
+beautifulsoup4
+reportlab
+requests

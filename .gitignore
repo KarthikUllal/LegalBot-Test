@@ -1,0 +1,39 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# ChromaDB data (your vector database)
+chroma_db/
+chroma_db/*
+
+# Project-specific folders
+datas/
+logs/
+*.log
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Environment variables
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build/dist folders (if any)
+dist/
+build/
+
+# FastAPI/Uvicorn cache
+*.pyc
