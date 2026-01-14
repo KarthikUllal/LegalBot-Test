@@ -80,6 +80,7 @@ class NVIDIAProvider(ProviderClient):
                     "temperature": 0.3,
                     "top_p": 0.9,
                     "stream": False,
+                    
                 },
                 timeout=60,
             )

@@ -11,115 +11,97 @@ from .translation import translator
 import re
 from datetime import datetime
 
-from langchain.memory import ConversationBufferMemory  # NEW: For conversation history
 from langchain.memory import ConversationBufferWindowMemory
-from chromadb.utils.embedding_functions import (
-    SentenceTransformerEmbeddingFunction,
-)  # For query embedding
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 try:
     from langchain_core.prompts import PromptTemplate
-    from langchain_core.runnables import RunnablePassthrough
-    from langchain_core.output_parsers import StrOutputParser
-    from langchain_core.retrievers import BaseRetriever
 except ImportError:
     from langchain.prompts import PromptTemplate
-    from langchain.schema.runnable import RunnablePassthrough
 
 logger = logging.getLogger(__name__)
 
 
-# Main RAG engine class - handles document ingestion, retrieval, and generation
 class RAGEngine:
     def __init__(self, provider: ProviderClient = None):
         self.provider = provider or get_best_provider()
         self.vstore = VectorStore()
-        self.memory = ConversationBufferWindowMemory(
-            k=8,  # Keep last 8 exchanges (same as your old limit)
-            memory_key="chat_history",
-            return_messages=True,
-        )
-        self.conversation_transcripts = (
-            {}
-        )  # session_id -> full lawyer-style transcript (keep for downloads)
+        self.memories = {}  # session_id -> ConversationBufferWindowMemory
+        self.conversation_transcripts = {}  # session_id -> transcript
 
         self._setup_prompts()
-        self._setup_chain()
 
         logger.info(
             f"RAG Engine initialized with provider: {type(self.provider).__name__}"
         )
 
+    def get_memory(self, session_id: str):
+        """Get or create memory for this session"""
+        if session_id not in self.memories:
+            self.memories[session_id] = ConversationBufferWindowMemory(
+                k=6, return_messages=True  # last 3 turns
+            )
+        return self.memories[session_id]
+
     def _setup_prompts(self):
-        # Clean context formatting
-        self.context_prompt = PromptTemplate(
-            input_variables=["context"],
-            template="""Relevant Legal Provisions from Indian Laws:
-
-    {context}
-
-    Use only the above provisions to answer accurately and naturally.""",
-        )
-
-        # FINAL PERFECT PROMPT — handles greetings, new questions, and follow-ups intelligently
+        # Strong, detailed prompt like your original project
         self.qa_prompt = PromptTemplate(
             input_variables=["question", "context", "chat_history"],
             template="""You are "Nyaya Mitra" — a friendly, professional, and trusted AI legal assistant helping people understand Indian laws in simple, clear language.
 
-    Current User Message: "{question}"
+Current User Message: "{question}"
 
-    Previous Conversation (if any):
-    {chat_history}
+Previous Conversation (use only if the current message clearly refers to it):
+{chat_history}
 
-    Relevant Legal Provisions:
-    {context}
+Relevant Legal Provisions (your main source — use this fully for legal questions):
+{context}
 
-    **Critical Instructions — Follow Exactly:**
-    - If the user message is a greeting (hello, hi, namaste, bye, thanks, how are you, etc.) or very short — respond warmly and naturally. Treat it as a fresh start.
-    - Only use the previous conversation if the current message clearly refers to it (e.g., "what is the punishment?", "how to file complaint?", "tell me more", "and then?").
-    - If the message is a new legal question or unrelated — ignore chat history and answer fresh.
-    - Never force connection to previous topic.
-    - For legal answers — use ONLY the legal provisions above.
-    - Speak directly and naturally, like a trusted lawyer.
-    - Refer to laws clearly:
-    - "Under Section 318 of the Bharatiya Nyaya Sanhita (BNS)..."
-    - "The punishment is..."
-    - "You should first go to..."
-    - Always prefer current law (BNS, BNSS, BSA) over old IPC.
-    - BNS fully replaced IPC on 1 July 2024.
-    - Be concise but complete (4–8 sentences).
-    - Use simple, supportive language.
-    - If provisions are insufficient — say honestly: "I don't have full details from the legal texts, but generally..."
+**Critical Instructions — Follow Exactly:**
 
-    Now respond in a warm, professional, and accurate way:""",
+1. Detect message type:
+   - If the message is purely casual/greeting (hi, hello, namaste, hey, thank you, thanks, bye, good night, how are you, etc.) → 
+     Reply warmly and briefly (1-2 sentences). Example: "Hello! How can I help you with Indian laws today?" or "You're welcome!"
+     Do NOT give legal info or long explanation.
+
+   - If the message is ANY legal question or situation (even short) → 
+     Give a FULL, DETAILED, PRACTICAL answer using the legal provisions.
+     Start directly with the answer — no long greeting.
+     Use numbered steps for procedures.
+     Mention exact section and act name.
+     Be confident and complete.
+
+2. For legal answers:
+   - ALWAYS use all relevant context
+   - Give clear numbered steps for any procedure (FIR, complaint, protection order)
+   - For domestic violence: Explain Protection of Women from Domestic Violence Act, 2005 — Protection Officer, reliefs, orders
+   - For consumer issues: Explain Consumer Protection Act, 2019 — rights, district commission
+   - For theft/robbery/cheating: Use current BNS sections
+   - BNS replaced IPC on 1 July 2024 — prefer BNS
+   - NEVER say "I do not have sufficient details" if context exists — use it confidently
+   - NEVER repeat sentences
+   - Keep answer 4–10 sentences, structured and practical
+
+3. General rules:
+   - The user is always seeking help or is the victim — never assume they committed crime
+   - Speak naturally like a trusted lawyer
+   - Use simple language
+   - Complete every answer — never stop mid-sentence
+   - NEVER restate, repeat, or summarize the user's question at the beginning.
+    - Start your answer directly with the advice or information.
+    - Do NOT say things like "You asked about...", "The user has asked...", "Your question is...".
+    - Jump straight into the helpful response.
+
+Now respond appropriately based on the message type:""",
         )
-
-    def _setup_chain(self):
-        pass
 
     def _clean_response(self, response: str) -> str:
         response = re.sub(r"\n\s*\n", "\n\n", response)
-
-        sections = [
-            "Overview",
-            "Key Definitions",
-            "Legal Provisions",
-            "Punishments & Penalties",
-            "Important Points",
-            "Legal References:",
-        ]
-
-        for section in sections:
-            if section in response and not response.startswith(section):
-                response = response.replace(section, f"\n\n{section}")
-
         return response.strip()
 
-    def _format_context(
-        self, docs: List[str], metas: List[dict], ids: List[str], dists: List[float]
-    ) -> str:
+    def _format_context(self, docs: List[str], metas: List[dict]) -> str:
         if not docs:
-            return "No specific legal provisions found for this query."
+            return "No relevant legal provisions found."
 
         parts = []
         for i, doc in enumerate(docs):
@@ -131,16 +113,17 @@ class RAGEngine:
                 if section and section != "None"
                 else "Relevant Provision"
             )
-
+            # Special label for Domestic Violence Act
+            if "domestic violence" in act.lower():
+                act = "Protection of Women from Domestic Violence Act, 2005"
             parts.append(f"From {act} ({section_text}):\n{doc.strip()}\n")
 
-        return "\n".join(parts)
+        return "\n\n".join(parts)
 
     def ingest_text(self, doc_id: str, text: str, metadata: dict = None) -> bool:
         try:
             logger.info(f"Ingesting document: {doc_id}")
             chunks = split_into_chunks(text)
-            logger.info(f"Split into {len(chunks)} chunks")
 
             from .ingestion import enrich_metadata_with_section
 
@@ -153,25 +136,17 @@ class RAGEngine:
 
             ids = [f"{doc_id}__{i}" for i in range(len(chunks))]
 
-            # NEW: Batch adding to avoid ChromaDB limit
-            batch_size = 500  # Safe size (adjust up to ~4000 if needed)
+            batch_size = 500
             for i in range(0, len(chunks), batch_size):
                 batch_ids = ids[i : i + batch_size]
                 batch_docs = chunks[i : i + batch_size]
                 batch_metas = metadatas[i : i + batch_size]
-
-                logger.info(
-                    f"Adding batch {i//batch_size + 1}: {len(batch_docs)} chunks"
-                )
                 self.vstore.collection.add(
                     ids=batch_ids, documents=batch_docs, metadatas=batch_metas
                 )
 
-            logger.info(
-                f"Successfully ingested {len(chunks)} chunks from {doc_id} in batches"
-            )
+            logger.info(f"Successfully ingested {len(chunks)} chunks from {doc_id}")
             return True
-
         except Exception as e:
             logger.error(f"Failed to ingest {doc_id}: {e}", exc_info=True)
             return False
@@ -185,22 +160,16 @@ class RAGEngine:
                 raise FileNotFoundError(f"File not found: {file_path}")
 
             doc_id = doc_id or path.stem
-            logger.info(f"Processing file: {path.name} as {doc_id}")
-
             text = load_pdf_text(path)
             if not text:
-                raise ValueError(
-                    "No text extracted from PDF. File might be scanned or corrupted."
-                )
+                raise ValueError("No text extracted from PDF.")
 
             metadata = {
                 "act": act_name or doc_id,
                 "source_file": path.name,
                 "source_type": "pdf",
             }
-
             return self.ingest_text(doc_id, text, metadata)
-
         except Exception as e:
             logger.error(f"Failed to ingest file {file_path}: {e}")
             return False
@@ -209,99 +178,15 @@ class RAGEngine:
         try:
             logger.info(f"Retrieving for: '{query}'")
 
-            # Use Chroma's embedding function (same model: all-MiniLM-L6-v2)
-            from chromadb.utils.embedding_functions import (
-                SentenceTransformerEmbeddingFunction,
-            )
-
             embedding_function = SentenceTransformerEmbeddingFunction(
                 model_name="all-MiniLM-L6-v2"
             )
+            query_embedding = embedding_function([query])[0]
 
-            # ✅ IMPROVED LAW CODE DETECTION
-            requested_law = None
-            query_lower = query.lower()
-
-            if any(
-                term in query_lower
-                for term in [
-                    "bns",
-                    "bharatiya nyaya sanhita",
-                    "bharatiya nyaya",
-                    "nyaya sanhita",
-                    "भरतीया न्याय संहिता",
-                ]
-            ):
-                requested_law = "BNS"
-            elif any(
-                term in query_lower
-                for term in [
-                    "bnss",
-                    "bharatiya nagarik suraksha sanhita",
-                    "nagarik suraksha",
-                ]
-            ):
-                requested_law = "BNSS"
-            elif any(
-                term in query_lower
-                for term in ["ipc", "indian penal code", "भारतीय दण्ड संहिता"]
-            ):
-                requested_law = "IPC"
-            elif any(
-                term in query_lower
-                for term in [
-                    "bsa",
-                    "bharatiya sakshya adhiniyam",
-                    "bharatiya sakshya",
-                    "sakshya",
-                ]
-            ):
-                requested_law = "BSA"
-
-            # Optional: Add more laws here later (e.g., IT Act, Consumer Protection, etc.)
-
-            legal_keywords = [
-                "section",
-                "act",
-                "law",
-                "legal",
-                "right",
-                "remedy",
-                "punishment",
-                "penalty",
-                "offense",
-                "crime",
-                "consumer",
-                "protection",
-                "domestic",
-                "violence",
-                "contract",
-                "property",
-                "cheating",
-                "murder",
-                "theft",
-            ]
-
-            enhanced_query = query
-            if not any(keyword in query_lower for keyword in legal_keywords):
-                enhanced_query += (
-                    " legal law section act rights remedies punishment offense"
-                )
-
-            # Generate query embedding using the same function as the collection
-            query_embedding = embedding_function([enhanced_query])[0]
-
-            # Query the vector store
             results = self.vstore.query(query_embedding, n_results=k * 2)
 
             docs = results.get("documents", [[]])[0]
             metas = results.get("metadatas", [[]])[0]
-            dists = results.get("distances", [[]])[0]
-            ids = results.get("ids", [[]])[0]
-
-            print(
-                f"Initial retrieval: {len(docs)} documents | Requested law: {requested_law}"
-            )
 
             if not docs:
                 return {
@@ -311,66 +196,12 @@ class RAGEngine:
                     "ids": [[]],
                 }
 
-            filtered_docs = []
-            filtered_metas = []
-            filtered_dists = []
-            filtered_ids = []
-
-            for i, (doc, meta, distance, chunk_id) in enumerate(
-                zip(docs, metas, dists, ids)
-            ):
-                if doc and meta:
-                    # PRIORITIZE REQUESTED LAW using metadata + content
-                    if requested_law:
-                        doc_act = meta.get("act", "").upper()
-                        doc_text_lower = doc.lower()
-
-                        law_matches = (
-                            requested_law in doc_act
-                            or requested_law.lower() in doc_text_lower
-                            or requested_law
-                            in meta.get("section", "")  # if section has BNS/IPC mention
-                        )
-
-                        if law_matches:
-                            filtered_docs.append(doc)
-                            filtered_metas.append(meta)
-                            filtered_dists.append(distance)
-                            filtered_ids.append(chunk_id)
-                            continue  # skip further checks
-
-                    # General relevance filtering
-                    doc_lower = doc.lower()
-                    has_query_terms = any(
-                        term in doc_lower for term in query_lower.split()
-                    )
-                    has_legal_content = any(
-                        keyword in doc_lower for keyword in legal_keywords
-                    )
-                    is_relevant_distance = distance < 1.0
-
-                    if has_query_terms or (has_legal_content and is_relevant_distance):
-                        filtered_docs.append(doc)
-                        filtered_metas.append(meta)
-                        filtered_dists.append(distance)
-                        filtered_ids.append(chunk_id)
-
-            # Fallback: take top k if filtering removed too many
-            if not filtered_docs and docs:
-                filtered_docs = docs[:k]
-                filtered_metas = metas[:k]
-                filtered_dists = dists[:k]
-                filtered_ids = ids[:k]
-
-            print(f"Final filtered: {len(filtered_docs)} documents")
-
             return {
-                "documents": [filtered_docs[:k]],
-                "metadatas": [filtered_metas[:k]],
-                "distances": [filtered_dists[:k]],
-                "ids": [filtered_ids[:k]],
+                "documents": [docs[:k]],
+                "metadatas": [metas[:k]],
+                "distances": [results.get("distances", [[]])[0][:k]],
+                "ids": [results.get("ids", [[]])[0][:k]],
             }
-
         except Exception as e:
             logger.error(f"Retrieval failed: {e}")
             return {
@@ -381,34 +212,30 @@ class RAGEngine:
             }
 
     def generate_answer(
-        self, question: str, retrieved: Dict
+        self, question: str, retrieved: Dict, session_id: str
     ) -> Tuple[str, List[SourceItem]]:
         try:
             docs = retrieved.get("documents", [[]])[0]
             metas = retrieved.get("metadatas", [[]])[0]
 
-            if not docs:
-                context = "No relevant legal provisions found."
-            else:
-                context = self._format_context(docs, metas, [], [])
+            context = self._format_context(docs, metas)
 
-            # Get chat history from memory
-            memory_vars = self.memory.load_memory_variables({})
+            memory = self.get_memory(session_id)
+            memory_vars = memory.load_memory_variables({})
             chat_history = memory_vars.get("chat_history", [])
 
-            # Format history as string
-            history_text = ""
-            for msg in chat_history[-6:]:  # Last 6 messages (3 turns)
-                if msg.type == "human":
-                    history_text += f"User: {msg.content}\n"
-                elif msg.type == "ai":
-                    history_text += f"Assistant: {msg.content}\n"
+            history_text = (
+                "\n".join(
+                    [
+                        f"{'User' if msg.type == 'human' else 'Assistant'}: {msg.content}"
+                        for msg in chat_history[-6:]
+                    ]
+                )
+                or "This is a new conversation."
+            )
 
-            # Final prompt with history
             formatted_prompt = self.qa_prompt.format(
-                question=question,
-                context=context,
-                chat_history=history_text or "This is a new conversation.",
+                question=question, context=context, chat_history=history_text
             )
 
             answer = self.provider.generate(formatted_prompt, max_tokens=1000)
@@ -424,23 +251,14 @@ class RAGEngine:
         self, question: str, top_k: int = 4, session_id: str = "default"
     ) -> ChatResponse:
         try:
-            # Load history from memory
-            memory_vars = self.memory.load_memory_variables({})
-            session_memory = memory_vars.get("chat_history", [])
+            memory = self.get_memory(session_id)
 
-            # Enhance question with context from history
-            enhanced_question = self._enhance_question_with_context(
-                question, session_memory
-            )
+            retrieved = self.retrieve(question, k=top_k)
+            answer, sources = self.generate_answer(question, retrieved, session_id)
 
-            retrieved = self.retrieve(enhanced_question, k=top_k)
-            answer, sources = self.generate_answer(enhanced_question, retrieved)
+            memory.chat_memory.add_user_message(question)
+            memory.chat_memory.add_ai_message(answer)
 
-            # Save to memory
-            self.memory.chat_memory.add_user_message(question)
-            self.memory.chat_memory.add_ai_message(answer)
-
-            # FULL transcript (for download) – keep separate
             self.conversation_transcripts.setdefault(session_id, []).append(
                 {
                     "timestamp": datetime.now().isoformat(),
@@ -453,51 +271,34 @@ class RAGEngine:
 
         except Exception as e:
             logger.error(f"RAG query failed: {e}")
-            return ChatResponse(
-                answer=f"Sorry, I encountered an error: {str(e)}",
-                sources=[],
-            )
+            return ChatResponse(answer="Sorry, error occurred.", sources=[])
+
+    def query_with_language(
+        self,
+        question: str,
+        language: str = "en",
+        top_k: int = 4,
+        session_id: str = "default",
+    ) -> ChatResponse:
+        try:
+            # Use original question for retrieval — no translation
+            response = self.query(question=question, top_k=top_k, session_id=session_id)
+
+            if language != "en":
+                try:
+                    response.answer = translator.translate_legal_response(
+                        response.answer, language
+                    )
+                except:
+                    pass  # Keep English if translation fails
+
+            return response
+        except Exception as e:
+            logger.error(f"Language query failed: {e}")
+            return ChatResponse(answer="Error processing request.", sources=[])
 
     def get_full_transcript(self, session_id: str):
         return self.conversation_transcripts.get(session_id, [])
-
-    def _enhance_question_with_context(self, question: str, history: list) -> str:
-        """Enhance question with conversation context from LangChain memory"""
-        if not history:
-            return question
-
-        question_lower = question.lower()
-
-        # Check last 2-3 messages for context (efficient for short memory)
-        for msg in reversed(history[-3:]):  # HumanMessage or AIMessage
-            if hasattr(msg, "content"):  # Check if it's a message object
-                prev_content_lower = msg.content.lower()
-
-                # Look for section references
-                import re
-
-                section_matches = re.findall(
-                    r"section\s+(\d+[a-z]*)", prev_content_lower
-                )
-
-                for section in section_matches:
-                    if (
-                        f"section {section}" in question_lower
-                        or section in question_lower
-                    ):
-                        return f"""Previous context mentioned Section {section.upper()}. 
-Current question: {question}
-Note: If Section {section.upper()} was mentioned earlier but isn't in the legal documents, I might not have detailed information about it."""
-
-                # Pronoun check
-                if any(
-                    pronoun in question_lower
-                    for pronoun in ["this", "that", "it", "he", "she"]
-                ):
-                    return f"""Following up on previous response: {msg.content[:100]}...
-Current question: {question}"""
-
-        return question
 
     # Provides stats about Working
     def get_stats(self) -> Dict:
