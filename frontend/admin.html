@@ -381,13 +381,13 @@
                     systemStatus.className = 'text-xl font-bold text-green-600 mt-2';
                     aiModel.textContent = data.data.llm_provider || 'Local LLM';
 
-                    console.log('✅ Stats updated successfully');
+                    console.log('Stats updated successfully');
                 } else {
                     throw new Error(data.error || 'Unknown error from server');
                 }
 
             } catch (error) {
-                console.error('❌ Error loading stats:', error);
+                console.error('Error loading stats:', error);
 
                 // Show error state in UI but don't break the page
                 systemStatus.textContent = 'Error';
@@ -580,7 +580,7 @@
                 }
 
             } catch (error) {
-                console.error('💥 Upload error:', error);
+                console.error('Upload error:', error);
                 const progressElement = document.getElementById(progressId);
                 progressElement.innerHTML = `
                     <div class="flex items-center gap-3">

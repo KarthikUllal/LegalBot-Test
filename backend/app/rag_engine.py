@@ -57,6 +57,9 @@ Previous Conversation (use only if the current message clearly refers to it):
 Relevant Legal Provisions (your main source — use this fully for legal questions):
 {context}
 
+**CRITICAL RULE: If context contains Bharatiya Nyaya Sanhita, use THAT name, NOT "Bharatiya Niyam Sangh" which doesn't exist!**
+**Donot repeat the question when giving answer**
+
 **Critical Instructions — Follow Exactly:**
 
 1. Detect message type:
