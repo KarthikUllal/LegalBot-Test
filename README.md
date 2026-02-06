@@ -48,4 +48,62 @@ The system uses Retrieval-Augmented Generation (RAG) to provide accurate, contex
 </p>
 
 <h1>⚙️ Technologies Used</h1>
+<ul>
+  <h3>Frontend</h3>
+  <li>
+    HTML5
+  </li>
+  <li>Tailwind CSS</li>
+  <li>JavaScript</li>
+</ul>
+<ul>
+  <h3>Backend</h3>
+  <li>FastAPI</li>
+  <li>Python 3.12</li>
+</ul>
+<ul>
+  <h3>AI</h3>
+  <li>LangChain</li>
+  <li>Retrieval-Augmented Generation (RAG)</li>
+  <li>Vector Embeddings</li>
+  <li>Large Language Models (LLMs)</li>
+</ul>
 
+<ul>
+  <h3>Database</h3>
+  <ul>ChromaDB (Vector DB)</ul>
+</ul>
+
+<h1>🛠️ Installation & Setup</h1>
+<h3>
+  1️⃣ Clone the Repository
+</h3>
+<p>
+  git clone https://github.com/your-username/legal-ai-chatbot.git
+  cd legal-ai-chatbot
+</p>
+<h3>
+  Create Virtual Environment
+</h3>
+<p>
+  python -m venv venv
+  source venv/Scripts/activate   # Windows
+</p>
+<h3>
+  Install Dependencies
+</h3>
+<p>
+  pip install -r requirements.txt
+</p>
+<h3>
+  Run the Backend Server
+</h3>
+<p>
+  uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8001
+</p>
+<h3>
+  Open Frontend
+</h3>
+<p>
+  Open index.html in your browser.
+</p>
