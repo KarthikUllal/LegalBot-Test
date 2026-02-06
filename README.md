@@ -130,5 +130,5 @@ The system uses Retrieval-Augmented Generation (RAG) to provide accurate, contex
     LLM generates an answer using retrieved context
   </li>
 </ol>
-<h1><center>Thank You</center></h1>
+
 
