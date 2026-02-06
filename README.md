@@ -14,54 +14,38 @@ The system uses Retrieval-Augmented Generation (RAG) to provide accurate, contex
 </ul>
 
 <h1>Key Features</h1>
+<ul>
+  <h3>User Features</h3>
+  <li>🤖 AI-based legal question answering</li>
+  <li>📚 Covers major Indian laws: (IPC, BNS, CONSUMER PROTECT ACT, IT ACT 2000)</li>
+  <li>🌐 Multilingual support:(Hindi , English, Kannada, Tamil)</li>
+  <li>📄 Chat transcript download (TXT & PDF)</li>
+  <li>🕘 Conversation history management</li>
+  <li>📰 Latest legal news & updates</li>
+</ul>
+<ul>
+  <h3>🔹Admin Features</h3>
+  <li>📂 Upload legal documents (PDF)</li>
+  <li>🏷️ Act-wise document tagging (act_name)</li>
+  <li>🧩 Automatic document chunking & vector storage</li>
+  <li>📊 System statistics dashboard</li>
+  <li>🗑️ Delete individual documents</li>
+  <li>❌ Clear entire vector database</li>
+  <li>📜 System logs & backend health monitoring</li>
+</ul>
+
+<h1>🏗️ System Architecture (High-Level)</h1>
 <p>
-  🔹 User Features
-
-🤖 AI-based legal question answering
-
-📚 Covers major Indian laws:
-
-IPC (Indian Penal Code)
-
-BNS (Bharatiya Nyaya Sanhita)
-
-IT Act 2000
-
-Consumer Protection Act
-
-Domestic Violence Act
-
-🌐 Multilingual support:
-
-English
-
-Hindi
-
-Kannada
-
-Tamil
-
-🎙️ Voice input support
-
-📄 Chat transcript download (TXT & PDF)
-
-🕘 Conversation history management
-
-📰 Latest legal news & updates
-
-🔹 Admin Features
-
-📂 Upload legal documents (PDF)
-
-🏷️ Act-wise document tagging (act_name)
-
-🧩 Automatic document chunking & vector storage
-
-📊 System statistics dashboard
-
-🗑️ Delete individual documents
-
-❌ Clear entire vector database
-
-📜 System logs & backend health monitoring
+  User Interface (HTML + Tailwind)
+        ↓
+  FastAPI Backend (REST APIs)
+        ↓
+  RAG Engine (LangChain)
+        ↓
+  ChromaDB Vector Database
+        ↓
+  LLM (NIVIDIA)
 </p>
+
+<h1>⚙️ Technologies Used</h1>
+
