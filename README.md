@@ -107,3 +107,28 @@ The system uses Retrieval-Augmented Generation (RAG) to provide accurate, contex
 <p>
   Open index.html in your browser.
 </p>
+
+<h1>🧪 How the RAG System Works</h1>
+<ol>
+  <li>Legal documents are uploaded (PDF)</li>
+  <li>
+    Documents are split into chunks
+  </li>
+  <li>
+    Chunks are converted into vector embeddings
+  </li>
+  <li>
+    Stored in ChromaDB
+  </li>
+  <li>
+    User query is embedded
+  </li>
+  <li>
+    Relevant chunks are retrieved
+  </li>
+  <li>
+    LLM generates an answer using retrieved context
+  </li>
+</ol>
+<h1><center>Thank You</center></h1>
+
